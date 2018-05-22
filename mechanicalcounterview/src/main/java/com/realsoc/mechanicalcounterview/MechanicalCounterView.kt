@@ -12,7 +12,6 @@ import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.View
 import android.view.animation.LinearInterpolator
-import java.util.*
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.properties.Delegates
@@ -58,7 +57,6 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
 
                         override fun onAnimationEnd(animation: Animator?) {
                             onCountTerminatedListener?.onCountTerminated()
-                            goal += Random().nextInt().rem(1500) - 700
                         }
 
                         override fun onAnimationCancel(animation: Animator?) {
