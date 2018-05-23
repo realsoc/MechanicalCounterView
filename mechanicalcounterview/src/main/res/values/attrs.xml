@@ -8,11 +8,18 @@
         <attr name="bold" format="boolean"/>
         <attr name="autoStart" format="boolean"/>
         <attr name="digitNumber" format="integer"/>
-        <attr name="type" format="enum">
+        <attr name="direction" format="enum">
             <enum name="alwaysUp" value="0"/>
             <enum name="alwaysDown" value="1"/>
             <enum name="moreUp" value="2"/>
             <enum name="moreDown" value="3"/>
         </attr>
+        <attr name="mode" format="enum">
+            <enum name="accelerate" value="0"/>
+            <enum name="decelerate" value="1"/>
+            <enum name="linear" value="2"/>
+            <enum name="accelerateDecelerate" value="3"/>
+        </attr>
+        <attr name="modeFactor" format="float"/>
     </declare-styleable>
 </resources>

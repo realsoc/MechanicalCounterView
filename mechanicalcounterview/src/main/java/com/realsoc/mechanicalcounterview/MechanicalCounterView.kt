@@ -11,24 +11,16 @@ import android.support.v4.content.ContextCompat
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.View
-import android.view.animation.LinearInterpolator
+import android.view.animation.*
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.properties.Delegates
 
 class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int = 0): View(context, attrs, defStyleAttr), ValueAnimator.AnimatorUpdateListener {
-    private lateinit var paint: Paint
 
-    private var r: Rect = Rect()
-    var onCountTerminatedListener: OnCountTerminatedListener? = null
-    var digitNumber: Int by Delegates.notNull()
-    var textSize: Int by Delegates.notNull()
-    var bold: Boolean by Delegates.notNull()
-    var autoStart: Boolean by Delegates.notNull()
-    var duration: Long = 3000
-    var color: Int by Delegates.notNull()
     private var marginSize: Int = -1
-
+    private lateinit var paint: Paint
+    private var r: Rect = Rect()
     private var canvasWidth: Int = -1
     private var canvasHeight: Int = -1
     private var maxCharacterWidth: Int = -1
@@ -37,53 +29,56 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
     private val downCoordinates = Coordinates()
     private var progress: Int = 0
     private var currentValue: Int = 0
-    private var direction: AnimationDirection = AnimationDirection.MORE_UP
     private var shouldRotate: Boolean = true
     private var animator: ValueAnimator? = ValueAnimator()
-    private var _goal: Int = 999
+    private var _goal: Int = 0
+
+    var onCountTerminatedListener: OnCountTerminatedListener? = null
+    var digitNumber: Int by Delegates.notNull()
+    var textSize: Int by Delegates.notNull()
+    var bold: Boolean by Delegates.notNull()
+    var autoStart: Boolean by Delegates.notNull()
+    var duration: Long by Delegates.notNull()
+    var color: Int by Delegates.notNull()
     var goal: Int = -1
         set(value) {
             animator?.cancel()
             _goal = abs(value)
-            if (field != currentValue) {
-                animator = ValueAnimator()
-                animator?.apply {
-                    setIntValues(currentValue * 1000, _goal * 1000)
-                    addUpdateListener(this@MechanicalCounterView)
-                    interpolator = LinearInterpolator()
-                    addListener(object : Animator.AnimatorListener {
-                        override fun onAnimationRepeat(animation: Animator?) {
-                        }
-
-                        override fun onAnimationEnd(animation: Animator?) {
-                            onCountTerminatedListener?.onCountTerminated()
-                        }
-
-                        override fun onAnimationCancel(animation: Animator?) {
-                        }
-
-                        override fun onAnimationStart(animation: Animator?) {
-                        }
-                    })
-                }
-                animator?.duration = duration
-                if (autoStart) {
-                    animator?.start()
-                }
-
+            if (field != currentValue && autoStart) {
+                start()
             }
         }
 
-    private enum class DigitType {
-        DIGIT_DOWN, DIGIT_UP
-    }
+    var mode: AnimationDirection = AnimationDirection.MORE_UP
 
-    private enum class AnimationDirection(val value: Int) {
+    enum class AnimationDirection(val value: Int) {
         ALWAYS_UP(0), ALWAYS_DOWN(1), MORE_UP(2), MORE_DOWN(3);
 
         companion object {
             fun getEnum(value: Int): AnimationDirection {
                 return values().find { value == it.value } ?: MORE_UP
+            }
+        }
+    }
+
+    var factor: Float by Delegates.notNull()
+    var animationType: AnimationType = AnimationType.DECELERATE
+
+    enum class AnimationType(val value: Int) {
+        ACCELERATE(0), DECELERATE(1), LINEAR(2), ACCELERATE_DECELERATE(3);
+
+        fun getInterpolator(factor: Float): Interpolator {
+            return when(this) {
+                ACCELERATE -> AccelerateInterpolator(factor)
+                DECELERATE -> DecelerateInterpolator(factor)
+                LINEAR -> LinearInterpolator()
+                ACCELERATE_DECELERATE -> AccelerateDecelerateInterpolator()
+            }
+        }
+
+        companion object {
+            fun getEnum(value: Int): AnimationType {
+                return values().find { value == it.value } ?: DECELERATE
             }
         }
     }
@@ -97,7 +92,10 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         textSize = typedArray.getDimensionPixelSize(R.styleable.MechanicalCounterView_size, 20)
         duration = typedArray.getInt(R.styleable.MechanicalCounterView_duration, 3000).toLong()
         digitNumber = typedArray.getInteger(R.styleable.MechanicalCounterView_digitNumber, 4)
-        direction = AnimationDirection.getEnum(typedArray.getInteger(R.styleable.MechanicalCounterView_type, 2))
+        mode = AnimationDirection.getEnum(typedArray.getInteger(R.styleable.MechanicalCounterView_direction, 2))
+        animationType = AnimationType.getEnum(typedArray.getInteger(R.styleable.MechanicalCounterView_mode, 1))
+        factor = typedArray.getFloat(R.styleable.MechanicalCounterView_modeFactor, 1f)
+
         typedArray.recycle()
 
         initializePaint()
@@ -107,10 +105,15 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         goal = _goal
     }
 
+    private var count: Int = 0
+
     override fun onAnimationUpdate(animation: ValueAnimator?) {
         progress = animation?.animatedValue as Int
         currentValue = progress.div(1000)
         invalidate()
+        if (currentValue == _goal && animator?.isRunning == true) {
+            animator?.cancel()
+        }
     }
 
     override fun onDraw(canvas: Canvas?) {
@@ -135,8 +138,33 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         setMeasuredDimension(canvasWidth, canvasHeight)
     }
 
-    public fun start() {
+    fun start() {
+        animator = ValueAnimator()
+        animator?.apply {
+            setIntValues(currentValue * 1000, _goal * 1000)
+            addUpdateListener(this@MechanicalCounterView)
+            interpolator = animationType.getInterpolator(factor)
+            addListener(object : Animator.AnimatorListener {
+                override fun onAnimationRepeat(animation: Animator?) {
+                }
+
+                override fun onAnimationEnd(animation: Animator?) {
+                    onCountTerminatedListener?.onCountTerminated()
+                }
+
+                override fun onAnimationCancel(animation: Animator?) {
+                }
+
+                override fun onAnimationStart(animation: Animator?) {
+                }
+            })
+        }
+        animator?.duration = duration
         animator?.start()
+    }
+
+    private enum class DigitType {
+        DIGIT_DOWN, DIGIT_UP
     }
 
     private fun drawDigitZone(canvas: Canvas, lowDigit: Int, highDigit: Int, position: Int, showHigh: Int) {
@@ -145,7 +173,7 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         val offset: Int =
                 /** Counting up*/
                 if (_goal > currentValue) {
-                    when (direction) {
+                    when (mode) {
                     /** Low digit is up, high is down */
                         AnimationDirection.ALWAYS_UP, AnimationDirection.MORE_UP-> {
                             upDigit = lowDigit.toString()
@@ -162,7 +190,7 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
                 }
                 /** Counting down */
                 else {
-                    when (direction) {
+                    when (mode) {
                     /** Low digit is down, high is up */
                         AnimationDirection.ALWAYS_UP, AnimationDirection.MORE_DOWN-> {
                             upDigit = highDigit.toString()
