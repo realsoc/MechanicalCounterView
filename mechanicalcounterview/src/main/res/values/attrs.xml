@@ -2,6 +2,7 @@
 <resources>
     <declare-styleable name="MechanicalCounterView">
         <attr name="goal" format="integer"/>
+        <attr name="currentValue" format="integer"/>
         <attr name="duration" format="integer"/>
         <attr name="size" format="dimension|reference"/>
         <attr name="counterColor" format="color|reference"/>

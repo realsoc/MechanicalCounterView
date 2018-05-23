@@ -1,6 +1,5 @@
 package com.realsoc.mechanicalcounterview
 
-import android.animation.Animator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.TypedArray
@@ -9,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.support.v4.content.ContextCompat
 import android.util.AttributeSet
+import android.util.Log
 import android.util.TypedValue
 import android.view.View
 import android.view.animation.*
@@ -18,38 +18,54 @@ import kotlin.properties.Delegates
 
 class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int = 0): View(context, attrs, defStyleAttr), ValueAnimator.AnimatorUpdateListener {
 
-    private var marginSize: Int = -1
     private lateinit var paint: Paint
     private var r: Rect = Rect()
+    private var animator: ValueAnimator? = ValueAnimator()
+
     private var canvasWidth: Int = -1
+    private var marginSize: Int = -1
     private var canvasHeight: Int = -1
     private var maxCharacterWidth: Int = -1
     private var maxCharacterHeight: Int = -1
     private val upCoordinates = Coordinates()
+
     private val downCoordinates = Coordinates()
     private var progress: Int = 0
-    private var currentValue: Int = 0
     private var shouldRotate: Boolean = true
-    private var animator: ValueAnimator? = ValueAnimator()
     private var _goal: Int = 0
+    private var _currentValue: Int = 0
+    private var running: Boolean = false
 
-    var onCountTerminatedListener: OnCountTerminatedListener? = null
-    var digitNumber: Int by Delegates.notNull()
+    var onCountTerminatedListener: OnCountStopListener? = null
     var textSize: Int by Delegates.notNull()
     var bold: Boolean by Delegates.notNull()
     var autoStart: Boolean by Delegates.notNull()
     var duration: Long by Delegates.notNull()
     var color: Int by Delegates.notNull()
-    var goal: Int = -1
+
+    var currentValue: Int
         set(value) {
-            animator?.cancel()
+            _currentValue = value
+
+        }
+        get() = _currentValue
+
+    var goal: Int = 0
+        get() = _goal
+        set(value) {
             _goal = abs(value)
-            if (field != currentValue && autoStart) {
+            animator?.cancel()
+            if (field != _currentValue && autoStart) {
                 start()
             }
         }
 
-    var mode: AnimationDirection = AnimationDirection.MORE_UP
+
+    var digitNumber: Int = 4
+        set(value) {
+            field = value
+            requestLayout()
+        }
 
     enum class AnimationDirection(val value: Int) {
         ALWAYS_UP(0), ALWAYS_DOWN(1), MORE_UP(2), MORE_DOWN(3);
@@ -61,8 +77,7 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         }
     }
 
-    var factor: Float by Delegates.notNull()
-    var animationType: AnimationType = AnimationType.DECELERATE
+    var direction: AnimationDirection = AnimationDirection.MORE_UP
 
     enum class AnimationType(val value: Int) {
         ACCELERATE(0), DECELERATE(1), LINEAR(2), ACCELERATE_DECELERATE(3);
@@ -83,84 +98,101 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         }
     }
 
+    var mode: AnimationType = AnimationType.DECELERATE
+    var modeFactor: Float by Delegates.notNull()
+
     init {
         val typedArray: TypedArray = context.obtainStyledAttributes(attrs, R.styleable.MechanicalCounterView)
-        _goal = typedArray.getInteger(R.styleable.MechanicalCounterView_goal, 1000)
+
+        _currentValue = typedArray.getInteger(R.styleable.MechanicalCounterView_currentValue, 0)
         autoStart = typedArray.getBoolean(R.styleable.MechanicalCounterView_autoStart, true)
         bold = typedArray.getBoolean(R.styleable.MechanicalCounterView_bold, false)
         color = typedArray.getColor(R.styleable.MechanicalCounterView_counterColor, ContextCompat.getColor(context, android.R.color.black))
         textSize = typedArray.getDimensionPixelSize(R.styleable.MechanicalCounterView_size, 20)
         duration = typedArray.getInt(R.styleable.MechanicalCounterView_duration, 3000).toLong()
         digitNumber = typedArray.getInteger(R.styleable.MechanicalCounterView_digitNumber, 4)
-        mode = AnimationDirection.getEnum(typedArray.getInteger(R.styleable.MechanicalCounterView_direction, 2))
-        animationType = AnimationType.getEnum(typedArray.getInteger(R.styleable.MechanicalCounterView_mode, 1))
-        factor = typedArray.getFloat(R.styleable.MechanicalCounterView_modeFactor, 1f)
+        direction = AnimationDirection.getEnum(typedArray.getInteger(R.styleable.MechanicalCounterView_direction, 2))
+        mode = AnimationType.getEnum(typedArray.getInteger(R.styleable.MechanicalCounterView_mode, 1))
+        modeFactor = typedArray.getFloat(R.styleable.MechanicalCounterView_modeFactor, 1f)
+        _goal = typedArray.getInteger(R.styleable.MechanicalCounterView_goal, 9*10.toDouble().pow(digitNumber - 1).toInt())
 
         typedArray.recycle()
 
-        initializePaint()
-        initializeMaxSize()
-        initializeCanvasSize()
-
+        currentValue = _currentValue
         goal = _goal
     }
 
-    private var count: Int = 0
-
     override fun onAnimationUpdate(animation: ValueAnimator?) {
         progress = animation?.animatedValue as Int
-        currentValue = progress.div(1000)
+        _currentValue = progress.div(1000)
         invalidate()
-        if (currentValue == _goal && animator?.isRunning == true) {
-            animator?.cancel()
+        if (_currentValue == _goal) {
+            stop()
         }
     }
 
     override fun onDraw(canvas: Canvas?) {
         super.onDraw(canvas)
-        shouldRotate = true
-        for(currentDigitNumber in 1..digitNumber) {
-            val lowDigit = progress.div(10.toDouble().pow(currentDigitNumber + 2)).rem(10).toInt()
-            val highDigit = (lowDigit + 1).rem(10)
-            val showHigh = if (shouldRotate) {
-                progress.rem(1000)
-            } else {
-                0
+        if (running) {
+            shouldRotate = true
+            for (currentDigitNumber in 1..digitNumber) {
+                val lowDigit = progress.div(10.toDouble().pow(currentDigitNumber + 2)).rem(10).toInt()
+                val highDigit = (lowDigit + 1).rem(10)
+                val showHigh = if (shouldRotate) {
+                    progress.rem(1000)
+                } else {
+                    0
+                }
+                shouldRotate = shouldRotate && ((_goal >= _currentValue && lowDigit == 9) || (_goal <= _currentValue && highDigit == 0))
+                canvas?.apply {
+                    drawDigitZone(this, lowDigit, highDigit, currentDigitNumber, showHigh)
+                }
             }
-            shouldRotate = shouldRotate && ((_goal >= currentValue && lowDigit == 9) || (_goal <= currentValue && highDigit == 0))
+        } else {
             canvas?.apply {
-                drawDigitZone(this, lowDigit, highDigit, currentDigitNumber, showHigh)
+                drawNumber(this, _currentValue)
             }
         }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        initializePaint()
+        initializeMaxSize()
+        initializeCanvasSize()
         setMeasuredDimension(canvasWidth, canvasHeight)
     }
 
     fun start() {
-        animator = ValueAnimator()
-        animator?.apply {
-            setIntValues(currentValue * 1000, _goal * 1000)
-            addUpdateListener(this@MechanicalCounterView)
-            interpolator = animationType.getInterpolator(factor)
-            addListener(object : Animator.AnimatorListener {
-                override fun onAnimationRepeat(animation: Animator?) {
-                }
-
-                override fun onAnimationEnd(animation: Animator?) {
-                    onCountTerminatedListener?.onCountTerminated()
-                }
-
-                override fun onAnimationCancel(animation: Animator?) {
-                }
-
-                override fun onAnimationStart(animation: Animator?) {
-                }
-            })
+        if (running) {
+            reset()
+        } else {
+            animator = ValueAnimator().apply {
+                setIntValues(_currentValue * 1000, _goal * 1000)
+                addUpdateListener(this@MechanicalCounterView)
+                interpolator = mode.getInterpolator(modeFactor)
+                duration = this@MechanicalCounterView.duration
+                this@MechanicalCounterView.running = true
+                start()
+            }
         }
-        animator?.duration = duration
-        animator?.start()
+    }
+
+    fun stop() {
+        Log.e("Lib", "Stop")
+        if (running) {
+            onCountTerminatedListener?.apply {
+                onCountStop(_currentValue)
+                Log.e("Lib", "sending to countstoplistener " + _currentValue.toString())
+            }
+            animator?.cancel()
+            running = false
+            invalidate()
+        }
+    }
+
+    fun reset() {
+        stop()
+        start()
     }
 
     private enum class DigitType {
@@ -173,7 +205,7 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         val offset: Int =
                 /** Counting up*/
                 if (_goal > currentValue) {
-                    when (mode) {
+                    when (direction) {
                     /** Low digit is up, high is down */
                         AnimationDirection.ALWAYS_UP, AnimationDirection.MORE_UP-> {
                             upDigit = lowDigit.toString()
@@ -190,7 +222,7 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
                 }
                 /** Counting down */
                 else {
-                    when (mode) {
+                    when (direction) {
                     /** Low digit is down, high is up */
                         AnimationDirection.ALWAYS_UP, AnimationDirection.MORE_DOWN-> {
                             upDigit = highDigit.toString()
@@ -209,6 +241,14 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         canvas.drawText(upDigit, upCoordinates.x, upCoordinates.y, paint)
         getDigitCoordinates(downDigit, position, DigitType.DIGIT_DOWN, offset, downCoordinates)
         canvas.drawText(downDigit, downCoordinates.x, downCoordinates.y, paint)
+    }
+
+    private fun drawNumber(canvas: Canvas, number: Int) {
+        for (position in 1..digitNumber) {
+            val currentDigit = number.div(10.toDouble().pow(position-1)).rem(10).toInt().toString()
+            getDigitCoordinates(currentDigit, position, DigitType.DIGIT_DOWN, 0, downCoordinates)
+            canvas.drawText(currentDigit, downCoordinates.x, downCoordinates.y, paint)
+        }
     }
 
     private fun initializePaint() {
@@ -257,7 +297,6 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
         coordinates.x  = maxCharacterWidth / 2f - textBounds.width() / 2f - textBounds.left.toFloat() + (digitNumber - position)* (maxCharacterWidth + marginSize)
     }
 
-
     /**
      *
      *
@@ -277,7 +316,7 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
 
     private data class Coordinates(var x: Float = -1F, var y: Float = -1F)
 
-    interface OnCountTerminatedListener {
-        fun onCountTerminated()
+    interface OnCountStopListener {
+        fun onCountStop(count: Int)
     }
 }

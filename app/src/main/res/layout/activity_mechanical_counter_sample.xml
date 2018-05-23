@@ -27,7 +27,7 @@
         app:direction="moreDown"
         app:mode="decelerate"
         app:modeFactor="2"
-        app:digitNumber="2"
+        app:digitNumber="4"
         app:goal="16"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
