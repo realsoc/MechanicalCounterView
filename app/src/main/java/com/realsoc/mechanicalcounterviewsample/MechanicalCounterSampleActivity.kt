@@ -12,6 +12,7 @@ class MechanicalCounterSampleActivity : AppCompatActivity(), View.OnClickListene
 
     override fun onCountStop(count: Int) {
         Log.e("Count is ", count.toString())
+        //binding.counter.start()
     }
 
     lateinit var binding: ActivityMechanicalCounterSampleBinding
@@ -24,10 +25,10 @@ class MechanicalCounterSampleActivity : AppCompatActivity(), View.OnClickListene
         binding.counter.currentValue = 200
         binding.counter.duration = 3000
         binding.counter.goal = 1000
+        //binding.counter.start()
     }
 
     override fun onClick(v: View?) {
-        binding.counter.currentValue = 200
-        binding.counter.reset()
+        binding.counter.goal = 2000
     }
 }

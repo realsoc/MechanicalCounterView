@@ -12,6 +12,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.View
 import android.view.animation.*
+import android.widget.TextView
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.properties.Delegates
@@ -254,7 +255,7 @@ class MechanicalCounterView @JvmOverloads constructor(context: Context, attrs: A
     private fun initializePaint() {
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
         textPaint.color = color
-        textPaint.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, textSize.toFloat(), resources.displayMetrics)
+        textPaint.textSize = textSize.toFloat()
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.isFakeBoldText = bold
         paint = textPaint
